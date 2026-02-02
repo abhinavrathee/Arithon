@@ -12,11 +12,6 @@ const Calculator = () => {
   const [expression, setExpression] = useState(''); // The full math expression (e.g., "12 * (5 + ")
   const [lastWasResult, setLastWasResult] = useState(false); // Track if last action was =
 
-  // Legacy states (keeping for now during transition)
-  const [firstNumber, setFirstNumber] = useState(null);
-  const [operation, setOperation] = useState(null);
-  const [newNumber, setNewNumber] = useState(false);
-
   // UI and feature states
   const [isLandscape, setIsLandscape] = useState(false);
   const [memory, setMemory] = useState(0);
@@ -29,7 +24,7 @@ const Calculator = () => {
   const theme = getTheme(isDarkMode);
 
   // Safe evaluation function with sanitization
-  const safeEvaluate = (expr) => {
+  const safeEvaluate = useCallback((expr) => {
     try {
       // Validate: Only numbers, operators, parentheses, and Math functions allowed
       // Using a regex to strip out anything unsafe before eval
@@ -56,7 +51,7 @@ const Calculator = () => {
       finalStr = finalStr.replace(/\)\s*\(/g, ')*(');
 
       // Double check simple sanitization
-      if (/[^0-9.\-+*/%()espa\sMath.incostanqrtlogpieE\^]/.test(finalStr)) {
+      if (/[^0-9.\-+*/%()espa\sMath.incostanqrtlogpieE^]/.test(finalStr)) {
         return 'Error';
       }
 
@@ -65,7 +60,7 @@ const Calculator = () => {
     } catch (error) {
       return 'Error';
     }
-  };
+  }, []);
 
   // Format number helper function
   const formatNumber = (num) => {
@@ -86,7 +81,7 @@ const Calculator = () => {
     const trimmedExpr = expression.trim();
     if (trimmedExpr.endsWith(')') && display === '0') {
       // Don't append the 0
-    } else if (display !== '0' || (expression === '' || /[+\-*\/\/(]$/.test(trimmedExpr))) {
+    } else if (display !== '0' || (expression === '' || /[+\-*/(]$/.test(trimmedExpr))) {
       finalExpr += display;
     }
 
@@ -124,39 +119,45 @@ const Calculator = () => {
     }).catch(err => console.error('Failed to copy: ', err));
   };
 
-  useEffect(() => {
-    const handleKeyPress = (event) => {
-      const { key } = event;
-      if (!isNaN(key)) {
-        handleNumber(key);
-      } else if (key === '+') {
-        handleOperation('+');
-      } else if (key === '-') {
-        handleOperation('-');
-      } else if (key === '*') {
-        handleOperation('×');
-      } else if (key === '/') {
-        handleOperation('÷');
-      } else if (key === 'Enter' || key === '=') {
-        calculate();
-      } else if (key === 'Escape') {
-        handleClear();
-      } else if (key === '.') {
-        handleDecimal();
-      } else if (key === '%') {
-        handlePercent();
-      } else if (key === 'Backspace') {
-        handleBackspace();
-      }
-    };
+  // Handle clear with expression reset
+  const handleClear = useCallback(() => {
+    setShowHistory(false);
+    setDisplay('0');
+    setExpression('');
+    setLastWasResult(false);
+    setIsResult(false);
+  }, []);
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => {
-      window.removeEventListener('keydown', handleKeyPress);
-    };
-  }, [display, firstNumber, operation, newNumber]);
+  const handleBackspace = useCallback(() => {
+    setShowHistory(false);
+    if (display.length > 1) {
+      setDisplay(display.slice(0, -1));
+    } else {
+      setDisplay('0');
+    }
+  }, [display]);
 
-  // Calculator functions remain the same
+  const handlePercent = useCallback(() => {
+    setShowHistory(false);
+    const current = parseFloat(display);
+    setDisplay((current / 100).toString());
+    setIsResult(true); // Percent operation produces a result
+  }, [display]);
+
+  const handlePlusMinus = useCallback(() => {
+    setShowHistory(false);
+    setDisplay((parseFloat(display) * -1).toString());
+    setIsResult(true); // Plus/minus operation produces a result
+  }, [display]);
+
+  const handleDecimal = useCallback(() => {
+    setShowHistory(false);
+    if (!display.includes('.')) {
+      setDisplay(display + '.');
+    }
+    setIsResult(false); // User is typing
+  }, [display]);
+
   // Handle number input with expression tracking
   const handleNumber = useCallback((num) => {
     setShowHistory(false);
@@ -242,7 +243,7 @@ const Calculator = () => {
   }, [display, lastWasResult]);
 
   // Handle scientific functions with expression tracking
-  const handleScientific = (func) => {
+  const handleScientific = useCallback((func) => {
     setShowHistory(false);
     if (display === 'Error') return;
 
@@ -261,10 +262,10 @@ const Calculator = () => {
     setExpression(newExpr + ` ${func}(`);
     setDisplay('0');
     setIsResult(false);
-  };
+  }, [display, expression, lastWasResult]);
 
   // Special for square/cube/one-over/sqrt which are immediate
-  const handleImmediateScientific = (func) => {
+  const handleImmediateScientific = useCallback((func) => {
     setShowHistory(false);
     const val = parseFloat(display);
     let res = 0;
@@ -277,46 +278,39 @@ const Calculator = () => {
     }
     setDisplay(formatNumber(res));
     setIsResult(true);
-  };
+  }, [display]);
 
-  // Handle clear with expression reset
-  const handleClear = useCallback(() => {
-    setShowHistory(false);
-    setDisplay('0');
-    setExpression('');
-    setLastWasResult(false);
-    setIsResult(false);
-  }, []);
+  useEffect(() => {
+    const handleKeyPress = (event) => {
+      const { key } = event;
+      if (!isNaN(key)) {
+        handleNumber(key);
+      } else if (key === '+') {
+        handleOperation('+');
+      } else if (key === '-') {
+        handleOperation('-');
+      } else if (key === '*') {
+        handleOperation('×');
+      } else if (key === '/') {
+        handleOperation('÷');
+      } else if (key === 'Enter' || key === '=') {
+        calculate();
+      } else if (key === 'Escape') {
+        handleClear();
+      } else if (key === '.') {
+        handleDecimal();
+      } else if (key === '%') {
+        handlePercent();
+      } else if (key === 'Backspace') {
+        handleBackspace();
+      }
+    };
 
-  const handleBackspace = () => {
-    setShowHistory(false);
-    if (display.length > 1) {
-      setDisplay(display.slice(0, -1));
-    } else {
-      setDisplay('0');
-    }
-  };
-
-  const handlePercent = () => {
-    setShowHistory(false);
-    const current = parseFloat(display);
-    setDisplay((current / 100).toString());
-    setIsResult(true); // Percent operation produces a result
-  };
-
-  const handlePlusMinus = () => {
-    setShowHistory(false);
-    setDisplay((parseFloat(display) * -1).toString());
-    setIsResult(true); // Plus/minus operation produces a result
-  };
-
-  const handleDecimal = () => {
-    setShowHistory(false);
-    if (!display.includes('.')) {
-      setDisplay(display + '.');
-    }
-    setIsResult(false); // User is typing
-  };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [calculate, handleBackspace, handleClear, handleDecimal, handleNumber, handleOperation, handlePercent]);
 
   const handleMemory = (action) => {
     setShowHistory(false);
