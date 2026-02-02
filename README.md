@@ -34,7 +34,8 @@
 
 ## 📂 Project Structure
 
-```plaintext
+```
+Arithon/
 ├── .gitattributes
 ├── .gitignore
 ├── LICENSE
@@ -42,25 +43,28 @@
 ├── package-lock.json
 ├── package.json
 ├── postcss.config.js
-├── public
+├── public/
 │   ├── favicon.ico
-│   ├── favicon_io
+│   ├── favicon_io/
 │   │   ├── android-chrome-192x192.png
 │   │   ├── android-chrome-512x512.png
 │   │   ├── apple-touch-icon.png
 │   │   ├── favicon-16x16.png
 │   │   ├── favicon-32x32.png
 │   │   └── site.webmanifest
-│   ├── index.html
-│   └── final.png
-├── src
+│   ├── final.png
+│   └── index.html
+├── src/
 │   ├── App.js
-│   ├── components
+│   ├── components/
 │   │   └── Calculator.js
 │   ├── index.css
-│   └── index.js
-└── tailwind.config.js
+│   ├── index.js
+│   └── theme.js
+├── tailwind.config.js
+└── thumbnail.png
 ```
+
 ## 🚀 Getting Started
 
 ### Prerequisites
