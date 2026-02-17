@@ -14,7 +14,6 @@ const Calculator = () => {
 
   // UI and feature states
   const [isLandscape, setIsLandscape] = useState(false);
-  const [memory, setMemory] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isCopied, setIsCopied] = useState(false);
   const [isResult, setIsResult] = useState(false);
