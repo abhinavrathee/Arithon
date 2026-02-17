@@ -24,9 +24,6 @@ const Calculator = () => {
 
   const theme = getTheme(isDarkMode);
 
-  // Helper: Convert degrees to radians
-  const degToRad = (degrees) => degrees * (Math.PI / 180);
-
   // Helper: Factorial function
   const factorial = (n) => {
     if (n < 0 || !Number.isInteger(n)) return NaN;
@@ -410,20 +407,6 @@ const Calculator = () => {
       window.removeEventListener('keydown', handleKeyPress);
     };
   }, [calculate, handleBackspace, handleClear, handleDecimal, handleNumber, handleOperation, handlePercent]);
-
-  const handleMemory = (action) => {
-    setShowHistory(false);
-    switch (action) {
-      case 'MC': setMemory(0); break;
-      case 'MR':
-        setDisplay(memory.toString());
-        setIsResult(true);
-        break;
-      case 'M+': setMemory(memory + parseFloat(display)); break;
-      case 'M-': setMemory(memory - parseFloat(display)); break;
-      default: break;
-    }
-  };
 
   const Button = ({ label, onClick, className, wide }) => (
     <button
