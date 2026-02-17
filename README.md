@@ -93,7 +93,7 @@
 
 | Portrait Mode | Landscape Mode |
 |:-------------:|:--------------:|
-| ![Portrait](./public/final.png) | ![Landscape](./public/final.png) |
+| ![Portrait](./public/final.png) | ![Landscape](./public/image.png) |
 
 </div>
 
