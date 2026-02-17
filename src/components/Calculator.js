@@ -20,8 +20,22 @@ const Calculator = () => {
   const [isResult, setIsResult] = useState(false);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [angleMode, setAngleMode] = useState('deg'); // 'deg' or 'rad'
 
   const theme = getTheme(isDarkMode);
+
+  // Helper: Convert degrees to radians
+  const degToRad = (degrees) => degrees * (Math.PI / 180);
+
+  // Helper: Factorial function
+  const factorial = (n) => {
+    if (n < 0 || !Number.isInteger(n)) return NaN;
+    if (n === 0 || n === 1) return 1;
+    if (n > 170) return Infinity; // Prevent overflow
+    let result = 1;
+    for (let i = 2; i <= n; i++) result *= i;
+    return result;
+  };
 
   // Safe evaluation function with sanitization
   const safeEvaluate = useCallback((expr) => {
@@ -29,18 +43,31 @@ const Calculator = () => {
       // Validate: Only numbers, operators, parentheses, and Math functions allowed
       // Using a regex to strip out anything unsafe before eval
       // We allow: 0-9, ., +, -, *, /, %, (, ), spaces, and Math.x functions
-      const sanitized = expr
+      let sanitized = expr
         .replace(/×/g, '*')
         .replace(/÷/g, '/')
-        .replace(/sin/g, 'Math.sin')
-        .replace(/cos/g, 'Math.cos')
-        .replace(/tan/g, 'Math.tan')
+        .replace(/\^/g, '**');
+
+      // Handle degree mode for trig functions
+      if (angleMode === 'deg') {
+        // Convert degree arguments to radians for trig functions
+        // Also normalize angles to 0-360 range using modulo
+        sanitized = sanitized.replace(/sin\(([^)]+)\)/g, (match, arg) => `Math.sin(((${arg}) % 360)*(Math.PI/180))`);
+        sanitized = sanitized.replace(/cos\(([^)]+)\)/g, (match, arg) => `Math.cos(((${arg}) % 360)*(Math.PI/180))`);
+        sanitized = sanitized.replace(/tan\(([^)]+)\)/g, (match, arg) => `Math.tan(((${arg}) % 360)*(Math.PI/180))`);
+      } else {
+        sanitized = sanitized.replace(/sin/g, 'Math.sin');
+        sanitized = sanitized.replace(/cos/g, 'Math.cos');
+        sanitized = sanitized.replace(/tan/g, 'Math.tan');
+      }
+
+      sanitized = sanitized
+        .replace(/cbrt/g, 'Math.cbrt')
         .replace(/sqrt/g, 'Math.sqrt')
         .replace(/log/g, 'Math.log10')
         .replace(/ln/g, 'Math.log')
         .replace(/pi/g, 'Math.PI')
-        .replace(/e/g, 'Math.E')
-        .replace(/\^/g, '**');
+        .replace(/e(?![a-z])/g, 'Math.E'); // e not followed by letter
 
       // Handle implicit multiplication:
       // 1. Number( -> Number*(
@@ -51,7 +78,8 @@ const Calculator = () => {
       finalStr = finalStr.replace(/\)\s*\(/g, ')*(');
 
       // Double check simple sanitization
-      if (/[^0-9.\-+*/%()espa\sMath.incostanqrtlogpieE^]/.test(finalStr)) {
+      // Allow: digits, operators, parentheses, Math functions, spaces
+      if (/[^0-9.\-+*/%()espa\sMath.incostanqrtlogpieEPI]/.test(finalStr)) {
         return 'Error';
       }
 
@@ -60,14 +88,45 @@ const Calculator = () => {
     } catch (error) {
       return 'Error';
     }
-  }, []);
+  }, [angleMode]);
 
   // Format number helper function
   const formatNumber = (num) => {
-    if (String(num).length > 12) {
-      return num.toPrecision(10);
+    // Handle edge cases
+    if (typeof num !== 'number') {
+      return num.toString();
     }
-    return num.toString();
+
+    // Handle NaN (from invalid operations like sqrt(-1), log(-1))
+    if (isNaN(num)) {
+      return 'Math Error';
+    }
+
+    // Handle infinity
+    if (!isFinite(num)) {
+      return num === Infinity ? '∞' : num === -Infinity ? '-∞' : 'Error';
+    }
+
+    // Convert very large numbers to infinity (e.g., tan(90°))
+    if (Math.abs(num) > 1e15) {
+      return num > 0 ? '∞' : '-∞';
+    }
+
+    // Round very small numbers to zero (e.g., sin(180°) = 1.2e-16)
+    if (Math.abs(num) < 1e-10) {
+      return '0';
+    }
+
+    // Round to 10 decimal places to eliminate floating-point precision errors
+    // parseFloat removes trailing zeros (e.g., 0.30000000000 becomes 0.3)
+    const rounded = parseFloat(num.toFixed(10));
+
+    // For very long numbers, use precision formatting
+    if (String(rounded).length > 12) {
+      return rounded.toPrecision(10);
+    }
+
+    return rounded.toString();
   };
 
   // Calculate function with history tracking
@@ -86,6 +145,13 @@ const Calculator = () => {
     }
 
     if (!finalExpr) return;
+
+    // Auto-close unclosed parentheses
+    const openCount = (finalExpr.match(/\(/g) || []).length;
+    const closeCount = (finalExpr.match(/\)/g) || []).length;
+    if (openCount > closeCount) {
+      finalExpr += ')'.repeat(openCount - closeCount);
+    }
 
     const result = safeEvaluate(finalExpr);
 
@@ -247,6 +313,20 @@ const Calculator = () => {
     setShowHistory(false);
     if (display === 'Error') return;
 
+    // Special handling for constants - insert value immediately
+    if (func === 'pi') {
+      setDisplay(formatNumber(Math.PI));
+      setLastWasResult(true);
+      setIsResult(true);
+      return;
+    }
+    if (func === 'e') {
+      setDisplay(formatNumber(Math.E));
+      setLastWasResult(true);
+      setIsResult(true);
+      return;
+    }
+
     let newExpr = expression;
 
     if (lastWasResult) {
@@ -264,20 +344,39 @@ const Calculator = () => {
     setIsResult(false);
   }, [display, expression, lastWasResult]);
 
-  // Special for square/cube/one-over/sqrt which are immediate
+  // Special for square/cube/one-over/sqrt/cbrt/factorial which are immediate
   const handleImmediateScientific = useCallback((func) => {
     setShowHistory(false);
     const val = parseFloat(display);
     let res = 0;
+
+    // Special validation for factorial
+    if (func === 'factorial') {
+      if (!Number.isInteger(val) || val < 0) {
+        setDisplay('Math Error');
+        setIsResult(true);
+        setLastWasResult(true);
+        return;
+      }
+    }
+
     switch (func) {
       case 'square': res = val * val; break;
       case 'cube': res = val * val * val; break;
       case 'sqrt': res = Math.sqrt(val); break;
+      case 'cbrt': res = Math.cbrt(val); break;
       case '1/x': res = 1 / val; break;
+      case 'factorial': res = factorial(val); break;
+      case 'pow10': res = Math.pow(10, val); break;
+      case 'pow2': res = Math.pow(2, val); break;
+      case 'abs': res = Math.abs(val); break;
+      case 'ceil': res = Math.ceil(val); break;
+      case 'floor': res = Math.floor(val); break;
       default: return;
     }
     setDisplay(formatNumber(res));
     setIsResult(true);
+    setLastWasResult(true);
   }, [display]);
 
   useEffect(() => {
@@ -400,10 +499,10 @@ const Calculator = () => {
                   ${isDarkMode ? 'bg-slate-950/40 backdrop-blur-3xl' : 'bg-white/40 backdrop-blur-2xl'}`}>
                 {/* Calculator Content */}
                 <div className={`w-full h-full flex flex-col items-center justify-start ${isLandscape ? 'pt-4' : 'pt-28'} transition-colors duration-500 relative`}>
-                  {/* History Toggle (Internal Top-Right) */}
+                  {/* History Toggle (Internal Top-Left) */}
                   <button
                     onClick={() => setShowHistory(!showHistory)}
-                    className={`absolute ${isLandscape ? 'top-4' : 'top-10'} right-6 p-2 rounded-full transition-all z-30 ${showHistory ? 'text-indigo-400 bg-indigo-500/10' : theme.textSub + ' hover:text-indigo-400'}`}
+                    className={`absolute ${isLandscape ? 'top-4' : 'top-10'} left-6 p-2 rounded-full transition-all z-30 ${showHistory ? 'text-indigo-400 bg-indigo-500/10' : theme.textSub + ' hover:text-indigo-400'}`}
                     title="History"
                   >
                     <History size={20} />
@@ -453,8 +552,16 @@ const Calculator = () => {
                           {(expression + (display && display !== '0' && display !== 'Error' ? display : '')).replace(/\*/g, '×').replace(/\//g, '÷')}
                         </div>
                         {/* Main Display */}
-                        <div className={`font-light transition-all ${theme.displayText} ${display.length > 12 ? 'text-3xl' : 'text-5xl'} text-right`}>
-                          {display}
+                        <div className="relative">
+                          {/* Angle Mode Indicator */}
+                          {isLandscape && (
+                            <div className={`absolute top-0 left-0 text-xs ${theme.textSub} opacity-60`}>
+                              {angleMode.toUpperCase()}
+                            </div>
+                          )}
+                          <div className={`font-light transition-all ${theme.displayText} ${display.length > 12 ? 'text-3xl' : 'text-5xl'} text-right`}>
+                            {display}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -477,38 +584,48 @@ const Calculator = () => {
 
                           <Button label="x²" onClick={() => handleImmediateScientific('square')} className={theme.btnSecondary} />
                           <Button label="x³" onClick={() => handleImmediateScientific('cube')} className={theme.btnSecondary} />
-                          <Button label="log" onClick={() => handleScientific('log')} className={theme.btnSecondary} />
-                          <Button label="ln" onClick={() => handleScientific('ln')} className={theme.btnSecondary} />
+                          <Button label="10ˣ" onClick={() => handleImmediateScientific('pow10')} className={theme.btnSecondary} />
+                          <Button label="2ˣ" onClick={() => handleImmediateScientific('pow2')} className={theme.btnSecondary} />
                           {[7, 8, 9].map((num) => (
                             <Button key={num} label={num} onClick={() => handleNumber(num)} className={theme.btnPrimary} />
                           ))}
                           <Button label="×" onClick={() => handleOperation('×')} className={theme.btnOp} />
 
-                          <Button label="π" onClick={() => handleScientific('pi')} className={theme.btnSecondary} />
-                          <Button label="e" onClick={() => handleScientific('e')} className={theme.btnSecondary} />
-                          <Button label="(" onClick={() => handleParenthesis('(')} className={theme.btnSecondary} />
-                          <Button label=")" onClick={() => handleParenthesis(')')} className={theme.btnSecondary} />
+                          <Button label="log" onClick={() => handleScientific('log')} className={theme.btnSecondary} />
+                          <Button label="ln" onClick={() => handleScientific('ln')} className={theme.btnSecondary} />
+                          <Button label="|x|" onClick={() => handleImmediateScientific('abs')} className={theme.btnSecondary} />
+                          <Button label="⌈x⌉" onClick={() => handleImmediateScientific('ceil')} className={theme.btnSecondary} />
                           {[4, 5, 6].map((num) => (
                             <Button key={num} label={num} onClick={() => handleNumber(num)} className={theme.btnPrimary} />
                           ))}
                           <Button label="-" onClick={() => handleOperation('-')} className={theme.btnOp} />
 
-                          <Button label="1/x" onClick={() => handleImmediateScientific('1/x')} className={theme.btnSecondary} />
-                          <Button label="x!" onClick={() => { }} className={theme.btnSecondary} />
-                          <Button label="EE" onClick={() => { }} className={theme.btnSecondary} />
-                          <Button label="Rad" onClick={() => { }} className={theme.btnSecondary} />
+                          <Button label="∛" onClick={() => handleImmediateScientific('cbrt')} className={theme.btnSecondary} />
+                          <Button label="⌊x⌋" onClick={() => handleImmediateScientific('floor')} className={theme.btnSecondary} />
+                          <Button label="(" onClick={() => handleParenthesis('(')} className={theme.btnSecondary} />
+                          <Button label=")" onClick={() => handleParenthesis(')')} className={theme.btnSecondary} />
                           {[1, 2, 3].map((num) => (
                             <Button key={num} label={num} onClick={() => handleNumber(num)} className={theme.btnPrimary} />
                           ))}
                           <Button label="+" onClick={() => handleOperation('+')} className={theme.btnOp} />
 
-                          <Button label="MC" onClick={() => handleMemory('MC')} className={theme.btnSecondary} />
-                          <Button label="MR" onClick={() => handleMemory('MR')} className={theme.btnSecondary} />
-                          <Button label="M+" onClick={() => handleMemory('M+')} className={theme.btnSecondary} />
-                          <Button label="M-" onClick={() => handleMemory('M-')} className={theme.btnSecondary} />
+                          <Button
+                            label={angleMode === 'deg' ? 'Deg' : 'Rad'}
+                            onClick={() => {
+                              // Only allow mode change when no active expression
+                              if (expression === '' || lastWasResult) {
+                                setAngleMode(angleMode === 'deg' ? 'rad' : 'deg');
+                              }
+                            }}
+                            className={`${theme.btnSecondary} ${expression !== '' && !lastWasResult ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          />
+                          <Button label="π" onClick={() => handleScientific('pi')} className={theme.btnSecondary} />
+                          <Button label="e" onClick={() => handleScientific('e')} className={theme.btnSecondary} />
+                          <Button label="x!" onClick={() => handleImmediateScientific('factorial')} className={theme.btnSecondary} />
+                          <Button label="^" onClick={() => handleOperation('^')} className={theme.btnSecondary} />
                           <Button label="0" onClick={() => handleNumber(0)} className={theme.btnPrimary} />
                           <Button label="." onClick={handleDecimal} className={theme.btnPrimary} />
-                          <Button label="=" onClick={calculate} className={`${theme.equalsGradient} text-white col-span-2 shadow-lg`} />
+                          <Button label="=" onClick={calculate} className={`${theme.equalsGradient} text-white shadow-lg`} />
                         </>
                       ) : (
                         <>
